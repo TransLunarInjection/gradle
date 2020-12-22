@@ -425,6 +425,37 @@ class ConsumerProvidedVariantFinderTest extends Specification {
         0 * matcher._
     }
 
+    def "selects transform that can produce variant that is compatible with requested when loops exist"() {
+        def requested = attributes().attribute(a1, "requested")
+        def intermediary = attributes().attribute(a1, "intermediary")
+        def source = attributes().attribute(a1, "source")
+        def reg1 = registration(source, intermediary, {})
+        def reg2 = registration(intermediary, source, {})
+        def reg3 = registration(intermediary, requested, {})
+        def reg4 = registration(requested, intermediary, {})
+
+        given:
+        transformRegistrations.transforms >> [reg1, reg3, reg2, reg4]
+
+        when:
+        def result = matchingCache.collectConsumerVariants(source, requested)
+
+        then:
+        result.matches.size() == 1
+        result.matches[0].attributes.asMap() == requested.asMap()
+
+        and:
+        _ * schema.matcher() >> matcher
+        _ * matcher.ignoreAdditionalProducerAttributes() >> matcher
+        _ * matcher.ignoreAdditionalConsumerAttributes() >> matcher
+        _ * matcher.isMatching(_ as AttributeContainerInternal, _ as AttributeContainerInternal) >> {
+            AttributeContainerInternal a, AttributeContainerInternal b ->
+                a.asMap() == b.asMap()
+        }
+
+        0 * matcher._
+    }
+
     private TransformationSubject initialSubject(String path) {
         def artifact = Stub(ResolvableArtifact) {
             getFile() >> new File(path)

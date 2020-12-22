@@ -27,8 +27,11 @@ import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.internal.component.model.AttributeMatcher;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Finds all the variants that can be created from a given producer variant using
@@ -51,11 +54,22 @@ public class ConsumerProvidedVariantFinder {
     }
 
     public ConsumerVariantMatchResult collectConsumerVariants(AttributeContainerInternal actual, AttributeContainerInternal requested) {
-        AttributeSpecificCache toCache = getCache(requested);
-        return toCache.transforms.computeIfAbsent(actual, attrs -> findProducersFor(actual, requested).asImmutable());
+        return collectConsumerVariantsWithVisited(new HashSet<>(), actual, requested);
     }
 
-    private MutableConsumerVariantMatchResult findProducersFor(AttributeContainerInternal actual, AttributeContainerInternal requested) {
+    private ConsumerVariantMatchResult collectConsumerVariantsWithVisited(Set<AttributeContainerInternal> visited, AttributeContainerInternal actual, AttributeContainerInternal requested) {
+        if (!visited.add(actual)) {
+            return NoMatchConsumerVariantMatchResult.getInstance();
+        }
+        try {
+            AttributeSpecificCache toCache = getCache(requested);
+            return toCache.transforms.computeIfAbsent(actual, attrs -> findProducersFor(visited, actual, requested).asImmutable());
+        } finally {
+            visited.remove(actual);
+        }
+    }
+
+    private MutableConsumerVariantMatchResult findProducersFor(Set<AttributeContainerInternal> visited, AttributeContainerInternal actual, AttributeContainerInternal requested) {
         // Prefer direct transformation over indirect transformation
         List<ArtifactTransformRegistration> candidates = new ArrayList<>();
         List<ArtifactTransformRegistration> transforms = variantTransforms.getTransforms();
@@ -78,7 +92,7 @@ public class ConsumerProvidedVariantFinder {
 
         for (ArtifactTransformRegistration candidate : candidates) {
             AttributeContainerInternal requestedPrevious = computeRequestedAttributes(requested, candidate);
-            ConsumerVariantMatchResult inputVariants = collectConsumerVariants(actual, requestedPrevious);
+            ConsumerVariantMatchResult inputVariants = collectConsumerVariantsWithVisited(visited, actual, requestedPrevious);
             if (!inputVariants.hasMatches()) {
                 continue;
             }
